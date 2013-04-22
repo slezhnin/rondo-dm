@@ -1,0 +1,5 @@
+# Test MongoDB configuration
+connection:
+  - host: localhost
+    port: 27017
+database: test-rondo-dm
