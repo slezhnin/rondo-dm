@@ -19,7 +19,7 @@ import java.util.Date;
  */
 public class Document {
     public static final String ID = "_id";
-    public static final String DOCUMENT = "rondo.dm.document";
+    public static final String DOCUMENT = "rondo_dm.document";
     public static final String CREATED = "created";
     public static final String UPDATED = "updated";
     private static final Path documentPath = new Path(DOCUMENT);

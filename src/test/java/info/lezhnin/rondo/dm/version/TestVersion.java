@@ -67,11 +67,11 @@ public class TestVersion {
         assertTrue(newVersion.getParentId().get().equals(version.getObjectId()));
         assertFalse(version.getParentId().isPresent());
 
-        // It's now checked not to add/remove "current" label manually.
-//        version.addLabels(ImmutableList.of(Version.CURRENT_LABEL));
-//        assertTrue(version.isCurrent());
-//        version.removeLabels(ImmutableList.of(Version.CURRENT_LABEL));
-//        assertFalse(version.isCurrent());
+        // It's now checked not to add/remove "current" label manually in addLabels/removeLabels.
+        version.doAddLabels(ImmutableList.of(Version.CURRENT_LABEL));
+        assertTrue(version.isCurrent());
+        version.doRemoveLabels(ImmutableList.of(Version.CURRENT_LABEL));
+        assertFalse(version.isCurrent());
 
         if (databaseEnabled) testWithDatabase();
     }
