@@ -74,10 +74,23 @@ public class Document {
         return document.getObject();
     }
 
+    public void load(DBCollection collection) {
+        Preconditions.checkNotNull(collection);
+        object = collection.findOne(new BasicDBObject(ID, getObjectId()));
+    }
+
     public void save(DBCollection collection) {
         Preconditions.checkNotNull(collection);
         onUpdate();
         collection.save(getObject());
+    }
+
+    public Date getCreated() {
+        return (Date) getDocumentObject().get().get(CREATED);
+    }
+
+    public Date getUpdated() {
+        return (Date) getDocumentObject().get().get(UPDATED);
     }
 
     @Override

@@ -1,17 +1,25 @@
 package info.lezhnin.rondo.dm.version;
 
+import com.google.common.base.Function;
 import com.google.common.base.Optional;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import com.mongodb.BasicDBList;
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBCollection;
 import com.mongodb.DBObject;
+import com.sun.istack.internal.Nullable;
 import info.lezhnin.rondo.dm.Path;
 import info.lezhnin.rondo.dm.document.Document;
 import org.bson.types.ObjectId;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Description goes here...
@@ -21,6 +29,7 @@ import java.util.List;
  * @author Sergey Lezhnin <s.lezhnin@gmail.com>
  */
 public class Version extends Document {
+    static final Logger LOGGER = LoggerFactory.getLogger(Version.class);
     public static final String VERSION = "rondo.dm.version";
     public static final String LABELS = "labels";
     public static final String PARENTS = "parents";
@@ -64,11 +73,55 @@ public class Version extends Document {
     }
 
     public List<String> getLabels() {
-        return ImmutableList.copyOf((Collection) getVersionObject().get().get(LABELS));
+        Optional<DBObject> version = getVersionObject();
+        Object labels = version.isPresent() ? version.get().get(LABELS) : null;
+        if (labels == null) return ImmutableList.of();
+        return ImmutableList.copyOf((Iterable<? extends String>) labels);
+    }
+
+    public boolean addLabels(Collection<String> newLabels) {
+        Preconditions.checkNotNull(newLabels);
+        Preconditions.checkArgument(!newLabels.contains(CURRENT_LABEL), "Don't add \"%s\" label manually.", CURRENT_LABEL);
+        return doAddLabels(newLabels);
+    }
+
+    public boolean removeLabels(Collection<String> oldLabels) {
+        Preconditions.checkNotNull(oldLabels);
+        Preconditions.checkArgument(!oldLabels.contains(CURRENT_LABEL), "Don't remove \"%s\" label manually.", CURRENT_LABEL);
+        return doRemoveLabels(oldLabels);
+    }
+
+    boolean doAddLabels(Collection<String> newLabels) {
+        if (newLabels.size() > 0) {
+            Set<String> labels = Sets.newHashSet(getLabels());
+            if (labels.addAll(newLabels)) {
+                BasicDBList labelList = new BasicDBList();
+                labelList.addAll(labels);
+                getOrCreateVersionObject().put(LABELS, labels);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    boolean doRemoveLabels(Collection<String> oldLabels) {
+        if (oldLabels.size() > 0) {
+            Set<String> labels = Sets.newHashSet(getLabels());
+            if (labels.removeAll(oldLabels)) {
+                BasicDBList labelList = new BasicDBList();
+                labelList.addAll(labels);
+                getOrCreateVersionObject().put(LABELS, labels);
+                return true;
+            }
+        }
+        return false;
     }
 
     public List<ObjectId> getParentIds() {
-        return ImmutableList.copyOf((Collection) getVersionObject().get().get(PARENTS));
+        Optional<DBObject> version = getVersionObject();
+        Object parents = version.isPresent() ? version.get().get(PARENTS) : null;
+        if (parents == null) return ImmutableList.of();
+        return ImmutableList.copyOf((Iterable<? extends ObjectId>) parents);
     }
 
     public boolean isRoot() {
@@ -78,5 +131,65 @@ public class Version extends Document {
     public ObjectId getRootId() {
         if (isRoot()) return (ObjectId) getObject().get(ID);
         return getParentIds().get(0);
+    }
+
+    public Optional<Version> getVersionWithLabels(DBCollection collection, Collection<String> labels) {
+        BasicDBList labelList = new BasicDBList();
+        labelList.addAll(labels);
+        DBObject version = collection.findOne(new BasicDBObject(VERSION + '.' + LABELS, new BasicDBObject("$in", labelList)));
+        if (version == null) return Optional.absent();
+        return Optional.of(new Version(version));
+    }
+
+    public Optional<Version> getCurrent(DBCollection collection) {
+        return getVersionWithLabels(collection, ImmutableList.of(CURRENT_LABEL));
+    }
+
+    public void makeCurrent(DBCollection collection) {
+        Optional<Version> current = getCurrent(collection);
+        if (current.isPresent()) {
+            current.get().doRemoveLabels(ImmutableList.of(CURRENT_LABEL));
+            current.get().save(collection);
+        }
+        doAddLabels(ImmutableList.of(CURRENT_LABEL));
+        save(collection);
+    }
+
+    public boolean isCurrent() {
+        return getLabels().contains(CURRENT_LABEL);
+    }
+
+    public Optional<ObjectId> getParentId() {
+        List<ObjectId> parents = getParentIds();
+        if (parents.size() == 0) return Optional.absent();
+        return Optional.of(parents.get(parents.size() - 1));
+    }
+
+    private static final String V_P = VERSION + '.' + PARENTS;
+
+    public List<ObjectId> getChildIds(DBCollection collection) {
+        // Need to select objects who's last element of parents is this object id.
+        BasicDBList conditions = new BasicDBList();
+        conditions.add(new BasicDBObject(V_P, getObjectId()));
+        String where = String.format("this.%s[this.%s.length-1].str === '%s'}", V_P, V_P, getObjectId());
+        LOGGER.trace("$where: {}", where);
+        conditions.add(new BasicDBObject("$where", where));
+        BasicDBObject condition = new BasicDBObject("$and", conditions);
+        List<DBObject> children = ImmutableList.copyOf(collection.find(condition, new BasicDBObject(ID, 1)).iterator());
+        return Lists.transform(children, new Function<DBObject, ObjectId>() {
+            public ObjectId apply(@Nullable com.mongodb.DBObject input) {
+                return ObjectId.massageToObjectId(input.get(ID));
+            }
+        });
+    }
+
+    public List<ObjectId> getAllChildIds(DBCollection collection) {
+        BasicDBObject condition = new BasicDBObject(V_P, getObjectId());
+        List<DBObject> children = ImmutableList.copyOf(collection.find(condition, new BasicDBObject(ID, 1)).iterator());
+        return Lists.transform(children, new Function<DBObject, ObjectId>() {
+            public ObjectId apply(@Nullable com.mongodb.DBObject input) {
+                return ObjectId.massageToObjectId(input.get(ID));
+            }
+        });
     }
 }
