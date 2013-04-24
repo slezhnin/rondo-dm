@@ -14,10 +14,10 @@ import static com.google.common.base.Optional.fromNullable;
  *
  * @author Sergey Lezhnin <s.lezhnin@gmail.com>
  */
-public class Path {
+public class DmPath {
     String[] path;
 
-    public Path(String path) {
+    public DmPath(String path) {
         this.path = path == null ? new String[0] : path.split("\\.");
     }
 

@@ -21,10 +21,10 @@ import java.util.Map;
  *
  * @author Sergey Lezhnin <s.lezhnin@gmail.com>
  */
-public enum MongoDB {
+public enum DmMongoDB {
     INSTANCE;
 
-    static final Logger LOGGER = LoggerFactory.getLogger(MongoDB.class);
+    static final Logger LOGGER = LoggerFactory.getLogger(DmMongoDB.class);
     static final String MONGODB_YAML = "mongodb.yaml";
     static final String CONNECTION = "connection";
     static final String HOST = "host";

@@ -1,4 +1,4 @@
-package info.lezhnin.rondo.dm.version;
+package info.lezhnin.rondo.dm.decorator;
 
 import com.google.common.base.Function;
 import com.google.common.base.Optional;
@@ -8,11 +8,11 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.mongodb.BasicDBList;
 import com.mongodb.BasicDBObject;
-import com.mongodb.DBCollection;
 import com.mongodb.DBObject;
 import com.sun.istack.internal.Nullable;
-import info.lezhnin.rondo.dm.Path;
-import info.lezhnin.rondo.dm.document.Document;
+import info.lezhnin.rondo.dm.DmObject;
+import info.lezhnin.rondo.dm.DmObjectImpl;
+import info.lezhnin.rondo.dm.DmPath;
 import org.bson.types.ObjectId;
 
 import java.util.Collection;
@@ -26,23 +26,15 @@ import java.util.Set;
  *
  * @author Sergey Lezhnin <s.lezhnin@gmail.com>
  */
-public class Version extends Document {
+public class DmVersion extends DmDocument {
     public static final String VERSION = "rondo_dm.version";
     public static final String LABELS = "labels";
     public static final String PARENTS = "parents";
     public static final String CURRENT_LABEL = "current";
-    private static final Path versionPath = new Path(VERSION);
+    private static final DmPath versionPath = new DmPath(VERSION);
 
-    public Version() {
-        super();
-    }
-
-    public Version(DBObject object) {
-        super(object);
-    }
-
-    public Version(ObjectId objectId, DBCollection collection) {
-        super(objectId, collection);
+    public DmVersion(DmObject dmObject) {
+        super(dmObject);
     }
 
     protected Optional<DBObject> getVersionObject() {
@@ -53,15 +45,20 @@ public class Version extends Document {
         return versionPath.getOrCreateDBObject(getObject());
     }
 
-    public DBObject create() {
-        Version newVersion = new Version(copy());
+    @Override
+    public DmObject copy() {
+        return new DmVersion(super.copy());
+    }
+
+    public DmObject create() {
+        DmVersion newVersion = new DmVersion(copy());
         DBObject newVersionObject = newVersion.getOrCreateVersionObject();
         List labels = isVersioned() ? getLabels() : new BasicDBList();
         newVersionObject.put(LABELS, labels);
         List parents = isVersioned() ? getParentIds() : new BasicDBList();
-        parents.add(0, ((BasicDBObject) getObject()).getObjectId(ID));
+        parents.add(0, ((BasicDBObject) getObject()).getObjectId(DmObject.ID));
         newVersionObject.put(PARENTS, parents);
-        return newVersion.getObject();
+        return newVersion;
     }
 
     public boolean isVersioned() {
@@ -128,32 +125,32 @@ public class Version extends Document {
     }
 
     public ObjectId getRootId() {
-        if (isRoot()) return ObjectId.massageToObjectId(getObject().get(ID));
+        if (isRoot()) return ObjectId.massageToObjectId(getObject().get(DmObject.ID));
         List<ObjectId> parentIds = getParentIds();
         return parentIds.get(parentIds.size() - 1);
     }
 
-    public Optional<Version> getVersionWithLabels(DBCollection collection, Collection<String> labels) {
+    public Optional<DmVersion> getVersionWithLabels(Collection<String> labels) {
         BasicDBList labelList = new BasicDBList();
         labelList.addAll(labels);
-        DBObject version = collection.findOne(new BasicDBObject(VERSION + '.' + LABELS, new BasicDBObject("$in",
+        DBObject version = getCollection().findOne(new BasicDBObject(VERSION + '.' + LABELS, new BasicDBObject("$in",
                 labelList)));
         if (version == null) return Optional.absent();
-        return Optional.of(new Version(version));
+        return Optional.of(new DmVersion(new DmObjectImpl(version, getCollection())));
     }
 
-    public Optional<Version> getCurrent(DBCollection collection) {
-        return getVersionWithLabels(collection, ImmutableList.of(CURRENT_LABEL));
+    public Optional<DmVersion> getCurrent() {
+        return getVersionWithLabels(ImmutableList.of(CURRENT_LABEL));
     }
 
-    public void makeCurrent(DBCollection collection) {
-        Optional<Version> current = getCurrent(collection);
+    public void makeCurrent() {
+        Optional<DmVersion> current = getCurrent();
         if (current.isPresent()) {
             current.get().doRemoveLabels(ImmutableList.of(CURRENT_LABEL));
-            current.get().save(collection);
+            current.get().save();
         }
         doAddLabels(ImmutableList.of(CURRENT_LABEL));
-        save(collection);
+        save();
     }
 
     public boolean isCurrent() {
@@ -168,22 +165,22 @@ public class Version extends Document {
 
     private static final String V_P = VERSION + '.' + PARENTS;
 
-    public List<ObjectId> getChildIds(DBCollection collection) {
+    public List<ObjectId> getChildIds() {
         BasicDBObject condition = new BasicDBObject(V_P + ".0", getObjectId());
-        return getObjectIds(collection, condition);
+        return getObjectIds(condition);
     }
 
-    public List<ObjectId> getAllChildIds(DBCollection collection) {
+    public List<ObjectId> getAllChildIds() {
         BasicDBObject condition = new BasicDBObject(V_P, getObjectId());
-        return getObjectIds(collection, condition);
+        return getObjectIds(condition);
     }
 
-    private List<ObjectId> getObjectIds(DBCollection collection, BasicDBObject condition) {
-        Preconditions.checkNotNull(collection);
-        List<DBObject> children = ImmutableList.copyOf(collection.find(condition, new BasicDBObject(ID, 1)).iterator());
+    private List<ObjectId> getObjectIds(DBObject condition) {
+        Preconditions.checkNotNull(getCollection());
+        List<DBObject> children = ImmutableList.copyOf(getCollection().find(condition, new BasicDBObject(DmObject.ID, 1)).iterator());
         return Lists.transform(children, new Function<DBObject, ObjectId>() {
             public ObjectId apply(@Nullable DBObject input) {
-                return ObjectId.massageToObjectId(input.get(ID));
+                return ObjectId.massageToObjectId(input.get(DmObject.ID));
             }
         });
     }
